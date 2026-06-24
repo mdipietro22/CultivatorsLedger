@@ -1,0 +1,150 @@
+// prisma/schema.prisma
+// Cultivation Telemetry Engine - Clean Prisma Schema
+// Aligned with local PostgreSQL + PGMQ architecture
+
+generator client {
+  provider        = "prisma-client-js"
+  binaryTargets   = ["native", "darwin-arm64"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// CORE MODELS
+// ============================================================
+
+model SystemSetting {
+  id                    Int      @id @default(autoincrement())
+  updatedAt             DateTime @default(now()) @map("updated_at")
+  defaultLeafOffsetC    Decimal  @default(2.00) @map("default_leaf_offset_c") @db.Decimal(3, 2)
+  currentGrowthStage    String   @default("vegetative") @map("current_growth_stage")
+  preferredTempUnit     String   @default("C") @map("preferred_temp_unit")
+  
+  // UI Visibility Flags
+  showEcColumn          Boolean  @default(true) @map("show_ec_column")
+  showYieldColumn       Boolean  @default(true) @map("show_yield_column")
+  showNotesColumn       Boolean  @default(true) @map("show_notes_column")
+  showZoneAnalytics     Boolean  @default(true) @map("show_zone_analytics")
+  showVpdWarnings       Boolean  @default(true) @map("show_vpd_warnings")
+  
+  // Infrastructure Flags
+  enableCloudBackup     Boolean  @default(false) @map("enable_cloud_backup")
+  isManualOnlyMode      Boolean  @default(false) @map("is_manual_only_mode")
+
+  @@map("system_settings")
+}
+
+model ImportHistory {
+  id            Int       @id @default(autoincrement())
+  importedAt    DateTime  @default(now()) @map("imported_at")
+  filename      String    @db.VarChar(255)
+  rowsImported  Int       @map("rows_imported")
+  importStatus  String    @default("completed") @map("import_status")
+  rollbackAt    DateTime? @map("rollback_at")
+  
+  climateLogs   ClimateLog[]
+  irrigationEvents IrrigationEvent[]
+
+  @@map("import_history")
+}
+
+model ClimateLog {
+  id               Int       @id @default(autoincrement())
+  timestamp        DateTime  @default(now()) @db.Timestamptz(6)
+  roomId           String    @map("room_id") @db.VarChar(50)
+  zoneId           String    @default("Main") @map("zone_id") @db.VarChar(50)
+  sensorMac        String?   @map("sensor_mac") @db.VarChar(17)
+  airTempC         Decimal   @map("air_temp_c") @db.Decimal(4, 2)
+  relativeHumidity Decimal   @map("relative_humidity") @db.Decimal(5, 2)
+  leafOffsetC      Decimal   @default(2.00) @map("leaf_offset_c") @db.Decimal(3, 2)
+  calculatedVpdKpa Decimal?  @map("calculated_vpd_kpa") @db.Decimal(4, 2)
+  isManualEntry    Boolean   @default(false) @map("is_manual_entry")
+  
+  importId         Int?      @map("import_id")
+  import           ImportHistory? @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, timestamp])
+  @@index([timestamp])
+  @@map("climate_logs")
+}
+
+model IrrigationEvent {
+  id                 Int       @id @default(autoincrement())
+  timestamp          DateTime  @default(now()) @db.Timestamptz(6)
+  roomId             String    @map("room_id") @db.VarChar(50)
+  zoneId             String    @map("zone_id") @db.VarChar(50)
+  sensorMac          String?   @map("sensor_mac") @db.VarChar(17)
+  moisturePercentage Decimal   @map("moisture_percentage") @db.Decimal(5, 2)
+  ecLevel            Decimal?  @map("ec_level") @db.Decimal(3, 1)
+  isManualEntry      Boolean   @default(false) @map("is_manual_entry")
+  
+  importId           Int?      @map("import_id")
+  import             ImportHistory? @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, timestamp])
+  @@map("irrigation_events")
+}
+
+model BatchHarvest {
+  id               Int       @id @default(autoincrement())
+  strainName       String    @map("strain_name") @db.VarChar(100)
+  roomId           String?   @map("room_id") @db.VarChar(50)
+  startDate        DateTime  @default(now()) @map("start_date") @db.Date
+  flowerFlipDate   DateTime? @map("flower_flip_date") @db.Date
+  harvestDate      DateTime? @map("harvest_date") @db.Date
+  totalDryYieldG   Decimal?  @map("total_dry_yield_g") @db.Decimal(8, 2)
+  notes            String?
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("batch_harvests")
+}
+
+// ============================================================
+// HARDWARE INTEGRATION MODELS
+// ============================================================
+
+model IntegrationProvider {
+  id          String   @id @db.Uuid
+  name        String   @db.VarChar(50)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  connections UserHardwareConnection[]
+
+  @@map("integration_providers")
+}
+
+model UserHardwareToken {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  providerBrand    String    @map("provider_brand") @db.VarChar(50)
+  hardwareApiToken String    @map("hardware_api_token")
+  tokenHash        String    @unique @map("token_hash")
+  currentDeviceId  String?   @map("current_device_id") @db.VarChar(100)
+  isActive         Boolean   @default(true) @map("is_active")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  lastUsedAt       DateTime? @map("last_used_at") @db.Timestamptz(6)
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(6)
+
+  @@unique([userId, providerBrand])
+  @@map("user_hardware_tokens")
+}
+
+model UserHardwareConnection {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  providerId     String    @map("provider_id")
+  ingestionToken String    @unique @map("ingestion_token")
+  isActive       Boolean   @default(true) @map("is_active")
+  lastSyncAt     DateTime? @map("last_sync_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  provider IntegrationProvider @relation(fields: [providerId], references: [id])
+
+  @@unique([userId, providerId])
+  @@map("user_hardware_connections")
+}
