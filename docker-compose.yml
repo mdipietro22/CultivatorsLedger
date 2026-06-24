@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: supabase/postgres:15.1  # Includes pgmq extension pre-installed
+    container_name: cultivation_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: cultivation_db
+      # Enable pgmq via shared_preload_libraries
+      POSTGRES_CONFIG: |
+        shared_preload_libraries = 'pgmq'
+    ports:
+      - "5433:5432"  # Map host 5433 to container 5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql  # Auto-run schema on first start
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
