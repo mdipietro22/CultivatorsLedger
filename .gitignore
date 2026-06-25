@@ -24,3 +24,6 @@ docker-compose.override.yml
 dist/
 build/
 .next/
+
+.venv/
+.DS_Store

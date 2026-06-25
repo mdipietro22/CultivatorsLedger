@@ -1,6 +1,8 @@
+version: '3.8'
+
 services:
   postgres:
-    image: ghcr.io/pgmq/pg17-pgmq:v1.5.1
+    image: ghcr.io/pgmq/pg17-pgmq:v1.1.0
     container_name: cultivation_postgres
     environment:
       POSTGRES_USER: postgres
@@ -10,8 +12,31 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
     restart: unless-stopped
+
+  backend-worker:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: cultivation_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+    depends_on:
+      - postgres
+
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/cultivation_db?schema=public
+    depends_on:
+      - postgres
 
 volumes:
   postgres_data:
